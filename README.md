@@ -8,3 +8,7 @@ bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/AnyTLS.s
 卸载：
 
 bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/uninstall.sh)
+
+AnyReality一键安装脚本
+
+bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/AnyReality.sh)
