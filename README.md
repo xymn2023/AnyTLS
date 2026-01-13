@@ -1,14 +1,6 @@
-# AnyTLS
-AnyTLS一键安装脚本
+# AnyTLS/AnyReality
+AnyTLS/AnyReality双协议一键安装脚本
 
 安装：
 
-bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/AnyTLS.sh)
-
-卸载：
-
-bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/uninstall.sh)
-
-AnyReality一键安装脚本
-
-bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/AnyReality.sh)
+bash <(wget -qO- https://raw.githubusercontent.com/meng-jin/AnyTLS/main/Any.sh)
