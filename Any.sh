@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # ==============================================================================
 # 脚本名称: Sing-Box AnyTLS / AnyReality 极致优化版
-# 快捷命令: 终端直接输入 'a' 即可呼出
+# 快捷命令: 终端直接输入 'a' 即可呼出 (强制全局注册)
 # ==============================================================================
 
 set -eo pipefail
@@ -14,7 +14,6 @@ readonly INFO_PATH="/root/.sb_info.json"
 readonly TLS_DIR="/root/AnyTLS/tls"
 readonly SERVICE_NAME="sing-box"
 readonly LOCAL_SCRIPT_PATH="/root/any.sh"
-readonly SHORTCUT_CMD="/usr/local/bin/a"
 
 # 颜色与样式
 readonly RED='\033[0;31m'
@@ -45,41 +44,41 @@ check_root() {
     fi
 }
 
-# 注册 'a' 为系统的全局快捷命令（完美修复管道运行与悬空链接报错）
-register_shortcut() {
-    local current_script
-    current_script=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
-
-    # 如果是通过管道 bash <(...) 或临时文件运行，先把自身保存到固定路径 /root/any.sh
-    if [[ "$current_script" =~ ^/dev/fd/ ]] || [[ "$current_script" =~ ^/tmp/ ]] || [[ ! -f "$current_script" ]]; then
-        if [[ ! -f "$LOCAL_SCRIPT_PATH" || "$current_script" -nt "$LOCAL_SCRIPT_PATH" ]]; then
-            cp -f "$0" "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
-            chmod +x "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
-        fi
-        current_script="$LOCAL_SCRIPT_PATH"
-    else
-        # 如果是本地实体文件，顺便备份同步一份至 /root/any.sh
-        if [[ "$current_script" != "$LOCAL_SCRIPT_PATH" && -f "$current_script" ]]; then
-            cp -f "$current_script" "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
-            chmod +x "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
-            current_script="$LOCAL_SCRIPT_PATH"
-        fi
+# ------------------------------------------------------------------------------
+# 强制性全局注册函数 ('a' 命令)
+# ------------------------------------------------------------------------------
+force_register_shortcut() {
+    # 1. 强制将当前运行的脚本实体物理写入到 /root/any.sh
+    if [[ -s "$0" ]]; then
+        cp -f "$0" "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
     fi
 
-    # 清理已存在的悬空或损坏的软链接
-    if [[ -L "$SHORTCUT_CMD" ]]; then
-        if [[ ! -e "$SHORTCUT_CMD" ]] || [[ $(readlink -f "$SHORTCUT_CMD") != "$current_script" ]]; then
-            rm -f "$SHORTCUT_CMD"
-        fi
-    elif [[ -f "$SHORTCUT_CMD" ]]; then
-        rm -f "$SHORTCUT_CMD"
+    # 防止管道运行时 $0 无法被读取，如果在 /root/any.sh 仍为空，尝试重新抓取下载
+    if [[ ! -s "$LOCAL_SCRIPT_PATH" ]]; then
+        curl -fsSL https://raw.githubusercontent.com/xymn2023/AnyTLS/main/Any.sh -o "$LOCAL_SCRIPT_PATH" 2>/dev/null || \
+        wget -qO "$LOCAL_SCRIPT_PATH" https://raw.githubusercontent.com/xymn2023/AnyTLS/main/Any.sh 2>/dev/null || true
     fi
 
-    # 重新绑定软链接并赋予安全权限
-    if [[ ! -f "$SHORTCUT_CMD" && -f "$current_script" ]]; then
-        ln -sf "$current_script" "$SHORTCUT_CMD"
-        chmod +x "$current_script" 2>/dev/null || true
-    fi
+    chmod +x "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
+
+    # 2. 直接在系统的全局命令目录生成实体可执行文件 /usr/local/bin/a 与 /usr/bin/a
+    local target_paths=("/usr/local/bin/a" "/usr/bin/a")
+
+    for path in "${target_paths[@]}"; do
+        # 如果存在旧的同名软链接或旧文件，强行删除掉
+        rm -rf "$path" 2>/dev/null || true
+
+        # 写入物理唤醒指令
+        cat << 'EOF' > "$path"
+#!/usr/bin/env bash
+if [[ -f /root/any.sh ]]; then
+    bash /root/any.sh "$@"
+else
+    bash <(curl -fsSL https://raw.githubusercontent.com/xymn2023/AnyTLS/main/Any.sh) "$@"
+fi
+EOF
+        chmod +x "$path" 2>/dev/null || true
+    done
 }
 
 # 校验端口格式
@@ -498,7 +497,7 @@ uninstall_all() {
         systemctl disable "$SERVICE_NAME" >/dev/null 2>&1 || true
         
         rm -f /etc/systemd/system/"$SERVICE_NAME".service
-        rm -f /usr/bin/"$SERVICE_NAME" /usr/local/bin/"$SERVICE_NAME" "$SHORTCUT_CMD" "$LOCAL_SCRIPT_PATH"
+        rm -f /usr/bin/"$SERVICE_NAME" /usr/local/bin/"$SERVICE_NAME" /usr/local/bin/a /usr/bin/a "$LOCAL_SCRIPT_PATH"
         rm -rf /etc/"$SERVICE_NAME" "$INFO_PATH" /root/AnyTLS
         
         systemctl daemon-reload
@@ -514,7 +513,8 @@ uninstall_all() {
 # ------------------------------------------------------------------------------
 main_menu() {
     check_root
-    register_shortcut
+    # 每次运行强行刷新/注册 'a' 全局指令
+    force_register_shortcut
 
     while :; do
         clear
