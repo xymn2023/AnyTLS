@@ -13,6 +13,7 @@ readonly CONFIG_PATH="/etc/sing-box/config.json"
 readonly INFO_PATH="/root/.sb_info.json"
 readonly TLS_DIR="/root/AnyTLS/tls"
 readonly SERVICE_NAME="sing-box"
+readonly LOCAL_SCRIPT_PATH="/root/any.sh"
 readonly SHORTCUT_CMD="/usr/local/bin/a"
 
 # 颜色与样式
@@ -44,17 +45,40 @@ check_root() {
     fi
 }
 
-# 注册 'a' 为系统的全局快捷命令
+# 注册 'a' 为系统的全局快捷命令（完美修复管道运行与悬空链接报错）
 register_shortcut() {
     local current_script
-    current_script=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null)
-    
-    if [[ -n "$current_script" && "$current_script" != "$SHORTCUT_CMD" ]]; then
-        if [[ ! -L "$SHORTCUT_CMD" || $(readlink -f "$SHORTCUT_CMD") != "$current_script" ]]; then
-            ln -sf "$current_script" "$SHORTCUT_CMD"
-            chmod +x "$SHORTCUT_CMD"
-            chmod +x "$current_script"
+    current_script=$(readlink -f "$0" 2>/dev/null || realpath "$0" 2>/dev/null || echo "$0")
+
+    # 如果是通过管道 bash <(...) 或临时文件运行，先把自身保存到固定路径 /root/any.sh
+    if [[ "$current_script" =~ ^/dev/fd/ ]] || [[ "$current_script" =~ ^/tmp/ ]] || [[ ! -f "$current_script" ]]; then
+        if [[ ! -f "$LOCAL_SCRIPT_PATH" || "$current_script" -nt "$LOCAL_SCRIPT_PATH" ]]; then
+            cp -f "$0" "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
+            chmod +x "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
         fi
+        current_script="$LOCAL_SCRIPT_PATH"
+    else
+        # 如果是本地实体文件，顺便备份同步一份至 /root/any.sh
+        if [[ "$current_script" != "$LOCAL_SCRIPT_PATH" && -f "$current_script" ]]; then
+            cp -f "$current_script" "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
+            chmod +x "$LOCAL_SCRIPT_PATH" 2>/dev/null || true
+            current_script="$LOCAL_SCRIPT_PATH"
+        fi
+    fi
+
+    # 清理已存在的悬空或损坏的软链接
+    if [[ -L "$SHORTCUT_CMD" ]]; then
+        if [[ ! -e "$SHORTCUT_CMD" ]] || [[ $(readlink -f "$SHORTCUT_CMD") != "$current_script" ]]; then
+            rm -f "$SHORTCUT_CMD"
+        fi
+    elif [[ -f "$SHORTCUT_CMD" ]]; then
+        rm -f "$SHORTCUT_CMD"
+    fi
+
+    # 重新绑定软链接并赋予安全权限
+    if [[ ! -f "$SHORTCUT_CMD" && -f "$current_script" ]]; then
+        ln -sf "$current_script" "$SHORTCUT_CMD"
+        chmod +x "$current_script" 2>/dev/null || true
     fi
 }
 
@@ -474,7 +498,7 @@ uninstall_all() {
         systemctl disable "$SERVICE_NAME" >/dev/null 2>&1 || true
         
         rm -f /etc/systemd/system/"$SERVICE_NAME".service
-        rm -f /usr/bin/"$SERVICE_NAME" /usr/local/bin/"$SERVICE_NAME" "$SHORTCUT_CMD"
+        rm -f /usr/bin/"$SERVICE_NAME" /usr/local/bin/"$SERVICE_NAME" "$SHORTCUT_CMD" "$LOCAL_SCRIPT_PATH"
         rm -rf /etc/"$SERVICE_NAME" "$INFO_PATH" /root/AnyTLS
         
         systemctl daemon-reload
